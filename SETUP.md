@@ -23,10 +23,14 @@ pip install -r requirements.txt
 4.  JSONをダウンロードし、ファイル名を `credentials.json` に変更して、このプロジェクトの**ルートディレクトリ**に配置してください。
 
 ## 3. Gemini API Key
+(設定済み) `config/config.py` に直接記述されています。
 
-1.  Google AI Studio で API Key を取得。
-2.  ルートディレクトリに `.env` ファイルを作成し、以下を記述してください。
+## 4. 実行手順 (Next Steps)
 
-```ini
-GEMINI_API_KEY=your_api_key_here
-```
+1.  ダウンロードした `credentials.json` をこのフォルダ (`c:\Antigravity\TaskManager\`) に配置してください。
+2.  以下のコマンドでアプリを起動します。
+    ```powershell
+    python src/main.py
+    ```
+3.  初回はブラウザが開き、Google認証が求められます。許可してください。
+4.  アプリが起動したら、「振り分け」「同期」「スケジュール実行」の順にボタンを押して動作を確認してください。
