@@ -92,15 +92,10 @@ class Scheduler:
                 new_title = f"【予定済】{task['title']}"
                 new_notes = f"{task.get('notes', '')}\n[Ref:EventID:{event['id']}]"
                 
-                self.tasks.update_task(task['parent'] if 'parent' in task else task['list_id'], task['id'], { # Wait, task object structure in 'items' doesn't always have list_id easily? 
-                                                                                        # get_tasks_in_list returns items. item has 'id', 'title'. 
-                                                                                        # passing list_id is required for patch. 
-                                                                                        # We need to preserve which list the task came from.
+                self.tasks.update_task(task['list_id'], task['id'], {
                     'title': new_title,
                     'notes': new_notes
                 })
-                # Note: tasks_adapter.get_tasks_in_list returned items do not contain 'list_id'. 
-                # We need to fix logic to track list_id or modify adapter to return tuple.
                 
                 self.state.set_mapping(task['id'], event['id'])
                 

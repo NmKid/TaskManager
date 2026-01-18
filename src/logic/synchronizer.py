@@ -47,7 +47,8 @@ class Synchronizer:
             note = f"From Calendar Event\n[Ref:EventID:{event_id}]"
             
             try:
-                task = self.tasks.create_task(inbox['id'], summary, notes=note)
+                task_title = f"【予定済】{summary}"
+                task = self.tasks.create_task(inbox['id'], task_title, notes=note)
                 
                 # Update State
                 self.state.set_mapping(task['id'], event_id)
