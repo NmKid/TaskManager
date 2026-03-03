@@ -104,6 +104,9 @@ class TaskManagerApp:
                 self.scheduler.schedule_tasks()
 
             # Layout
+            page.scroll = ft.ScrollMode.AUTO
+            page.clean()
+            
             page.add(
                 ft.Column([
                     ft.Container(

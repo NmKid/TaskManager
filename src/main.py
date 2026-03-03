@@ -11,7 +11,7 @@ import flet as ft
 
 def main():
     app = TaskManagerApp()
-    ft.app(app.main)
+    ft.app(target=app.main)
 
 if __name__ == "__main__":
     main()
