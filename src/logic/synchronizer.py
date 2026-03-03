@@ -1,99 +1,147 @@
-from datetime import datetime, timedelta
-from config.config import Config
+from src.logic.tasks_adapter import TasksAdapter
+from src.logic.calendar_adapter import CalendarAdapter
+from src.logic.state_manager import StateManager
+from src.logic.gemini_adapter import GeminiAdapter
+import traceback
 
 class Synchronizer:
-    def __init__(self, tasks_adapter, calendar_adapter, state_manager, gemini_adapter):
+    """
+    タスクデータの整理と同期を行うクラス。
+    最新仕様に基づき、Calendar から Tasks への同期は行わず、
+    Inbox (`■メモ`) のタスクを適切な `■` リストに振り分ける処理（Organization）のみを担当する。
+    """
+    def __init__(
+        self, 
+        tasks_adapter: TasksAdapter, 
+        calendar_adapter: CalendarAdapter,
+        state_manager: StateManager,
+        gemini_adapter: GeminiAdapter
+    ):
         self.tasks = tasks_adapter
         self.calendar = calendar_adapter
         self.state = state_manager
         self.gemini = gemini_adapter
 
-    def sync_calendar_to_tasks(self):
+    def _get_target_lists(self) -> dict:
         """
-        3.1 Sync: Calendar -> Tasks
-        Creates tasks for new calendar events in the Inbox.
+        全タスクリストから、本ツールが処理対象とするリスト（`■`付き）を抽出する。
+        Inbox (`■メモ`) や非表示作業中リスト (`■■`) を分類してディクショナリで返す。
         """
-        print("Starting Calendar -> Tasks Sync...")
-        # Get events for the next 14 days (or past 2 days to catch recent creates?)
-        # Specification implies "New events created". To keep it stateless, we check a window.
-        now = datetime.now()
-        end = now + timedelta(days=Config.SCHEDULING_DAYS)
+        all_lists = self.tasks.get_tasklists()
         
-        events = self.calendar.get_events(now, end)
+        target_lists = {
+            "inbox": None,       # 例: ■メモ
+            "active": [],        # 例: ■仕事, ■プライベート (表示対象)
+            "hidden": []         # 例: ■■作業用 (非表示タスクリスト)
+        }
         
-        inbox = self.tasks.get_inbox_list()
-        if not inbox:
-            print("Inbox list not found.")
-            return
-
-        count = 0
-        for event in events:
-            event_id = event['id']
-            summary = event.get('summary', 'No Title')
-            
-            # Skip if already mapped (meaning we created it or already synced it)
-            # Note: This prevents loop if we mapped Scheduler-created events correctly.
-            # But we also need to check if we synced this event BEFORE.
-            # Ideally state_manager allows reverse lookup event_id -> task_id or we just store synced event IDs.
-            # For this MVP, we can just check if any task maps to this event_id is expensive without reverse index.
-            # Let's assume StateManager tracks ALL linked items.
-            
-            # Since StateManager.mapping is {task_id: event_id}, we need to check values.
-            if event_id in self.state.mapping.values():
-                continue
-
-            # Create Task
-            print(f"New event found: {summary}. Creating task...")
-            note = f"From Calendar Event\n[Ref:EventID:{event_id}]"
-            
-            try:
-                task_title = f"【予定済】{summary}"
-                task = self.tasks.create_task(inbox['id'], task_title, notes=note)
+        for lst in all_lists:
+            title = lst.get('title', '')
+            if title == '■メモ':
+                target_lists["inbox"] = lst
+            elif title.startswith('■■'):
+                target_lists["hidden"].append(lst)
+            elif title.startswith('■'):
+                target_lists["active"].append(lst)
                 
-                # Update State
-                self.state.set_mapping(task['id'], event_id)
-                count += 1
-            except Exception as e:
-                print(f"Failed to create task for event {summary}: {e}")
-
-        print(f"Synced {count} events to tasks.")
+        return target_lists
 
     def organize_inbox(self):
         """
-        3.3 Organization: Inbox -> Lists
-        Moves tasks from Inbox to appropriate lists based on Gemini analysis.
+        Inbox（■メモ）に溜まっている新着タスクを分析し、最適な■リストに自動で振り分ける。
+        移動先が見つからない場合は Inbox に留める。
+        （※仕様上、ユーザーが手動で公式アプリにて修正可能）
         """
-        print("Starting Inbox Organization...")
-        inbox = self.tasks.get_inbox_list()
+        print("タスクの振り分け処理を開始します...")
+        
+        # 1. 扱うべきリスト郡を取得
+        lists = self._get_target_lists()
+        
+        inbox = lists["inbox"]
         if not inbox:
+            print("Inbox (■メモ) リストが見つかりません。振り分けを中止します。")
+            return
+            
+        active_lists = lists["active"]
+        if not active_lists:
+            print("振り分け先の ■ リストが見つかりません。")
             return
 
-        target_lists = self.tasks.get_target_lists()
-        # Remove inbox from target lists to avoid moving to itself (if inbox starts with ■)
-        target_lists = [l for l in target_lists if l['id'] != inbox['id']]
+        inbox_id = inbox['id']
         
-        if not target_lists:
-            print("No target lists found.")
+        # 2. Inboxから未完了のタスクを取得
+        tasks_in_inbox = self.tasks.get_tasks(inbox_id)
+        if not tasks_in_inbox:
+            print("Inbox に振り分けるべきタスクはありません。")
             return
+            
+        for idx, task in enumerate(tasks_in_inbox):
+            title = task.get('title', '')
+            notes = task.get('notes', '')
+            task_id = task['id']
+            
+            print(f"[{idx+1}/{len(tasks_in_inbox)}] タスク '{title}' の振り分け先を分析中...")
+            
+            try:
+                # 3. Geminiにタスクの所属リストを判定させる
+                target_list_id = self._determine_target_list(title, notes, active_lists)
+                
+                # 4. 判定結果に基づいて移動
+                if target_list_id:
+                    print(f"  -> リストを移動します (Target ID: {target_list_id})")
+                    # Tasks API v1 にはリスト間移動のメソッドが無いため、
+                    # 先に新しいリストに同一内容で作成し、元リストから削除する擬似的な移動処理を行う
+                    new_task = self.tasks.insert_task(
+                        tasklist_id=target_list_id, 
+                        title=title, 
+                        notes=notes
+                    )
+                    
+                    if new_task:
+                         self.tasks.delete_task(tasklist_id=inbox_id, task_id=task_id)
+                         print(f"  -> 移動完了")
+                else:
+                    print("  -> 適切な移動先が見つからなかったため、Inboxに残します。")
+                    
+            except Exception as e:
+                print(f"  -> エラーが発生しました: {e}")
+                traceback.print_exc()
 
-        tasks = self.tasks.get_tasks_in_list(inbox['id'])
+        print("振り分け処理が完了しました。")
+
+    def _determine_target_list(self, title: str, notes: str, available_lists: list) -> str:
+        """
+        Geminiを用いて、タスク内容と存在するリストの一覧から最適な移動先リストのIDを決定する。
+        """
+        # 利用可能なリストの名前とIDの辞書を作成
+        list_mapping = {lst['title']: lst['id'] for lst in available_lists}
+        list_names = list(list_mapping.keys())
         
-        count = 0
-        for task in tasks:
-            title = task['title']
-            
-            # Skip if it's a "Scheduled" task (prevent moving processed items if desired, though org is orthogonal)
-            
-            destination_list_name = self.gemini.categorize_task(title, target_lists)
-            
-            if destination_list_name:
-                # Find list ID
-                dest_list = next((l for l in target_lists if l['title'] == destination_list_name), None)
-                if dest_list:
-                    print(f"Moving '{title}' to {destination_list_name}")
-                    self.tasks.update_task_list(task['id'], inbox['id'], dest_list['id'])
-                    count += 1
-            else:
-                print(f"No category found for '{title}', keeping in Inbox.")
+        prompt = f'''
+以下のタスクを、提供されたタスクリストの選択肢から最も適切なものに分類してください。
 
-        print(f"Organized {count} tasks.")
+【タスク】
+タイトル: {title}
+メモ: {notes}
+
+【選択肢となるタスクリスト】
+{", ".join(list_names)}
+
+上記の【選択肢となるタスクリスト】の名前の中から、このタスクに最も適したリストの名前を1つだけ出力してください。
+理由や説明は不要です。該当するものが全く無い場合は "None" と出力してください。
+'''     
+        try:
+            # Geminiで分類実行
+            response = self.gemini.model.generate_content(prompt)
+            result_name = response.text.strip()
+            
+            # 結果が含まれているか柔軟に確認
+            for name, list_id in list_mapping.items():
+                if name in result_name:
+                    return list_id
+                    
+            return None
+            
+        except Exception as e:
+            print(f"分類推論エラー: {e}")
+            return None

@@ -1,51 +1,54 @@
-from datetime import datetime, timedelta
 from googleapiclient.discovery import build
-from config.config import Config
-import dateutil.parser
+import datetime
+from src.logic.auth import GoogleAuth
 
 class CalendarAdapter:
-    def __init__(self, auth_service):
-        self.service = auth_service.get_service('calendar', 'v3')
+    """
+    Google Calendar API と連携するためのアダプタクラス。
+    空き時間の取得や、タスクを予定としてカレンダーに登録する処理を担当する。
+    """
+    def __init__(self, auth: GoogleAuth):
+        self.auth = auth
+        self.service = self._build_service()
 
-    def get_events(self, time_min, time_max):
-        """Returns a list of events within the specified time range."""
-        events_result = self.service.events().list(
-            calendarId=Config.CALENDAR_ID,
-            timeMin=time_min.isoformat() + 'Z',
-            timeMax=time_max.isoformat() + 'Z',
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
-        return events_result.get('items', [])
+    def _build_service(self):
+        # 認証情報を使用して Calendar API のサービスオブジェクトを構築
+        creds = self.auth.authenticate()
+        return build('calendar', 'v3', credentials=creds)
 
-    def create_event(self, summary, start_time, end_time, description=None, color_id=None):
-        """Creates a new calendar event."""
+    def get_free_busy(self, time_min: datetime.datetime, time_max: datetime.datetime, calendar_id: str = 'primary') -> dict:
+        """
+        指定した期間内の予定の入り具合 (Free/Busy 情報) を取得する。
+        これにより、AIが空き時間を探してパズル的にタスクをスケジュール可能になる。
+        """
+        body = {
+            "timeMin": time_min.isoformat() + 'Z',  # ISO8601フォーマット文字列化(UTC)
+            "timeMax": time_max.isoformat() + 'Z',
+            "timeZone": "Asia/Tokyo",
+            "items": [{"id": calendar_id}]
+        }
+        
+        events_result = self.service.freebusy().query(body=body).execute()
+        
+        # primaryカレンダーの busy 期間リストを返す
+        return events_result['calendars'][calendar_id]['busy']
+
+    def insert_event(self, summary: str, description: str, start_time: datetime.datetime, end_time: datetime.datetime, calendar_id: str = 'primary') -> dict:
+        """
+        カレンダーに新しい予定を登録する。
+        スケジュール実行（Tasks -> Calendar）専用。
+        """
         event = {
             'summary': summary,
             'description': description,
             'start': {
-                'dateTime': start_time.isoformat(),
-                'timeZone': 'Asia/Tokyo',  # Adjust as needed or make configurable
+                'dateTime': start_time.isoformat() + '+09:00', # 日本時間
+                'timeZone': 'Asia/Tokyo',
             },
             'end': {
-                'dateTime': end_time.isoformat(),
+                'dateTime': end_time.isoformat() + '+09:00',
                 'timeZone': 'Asia/Tokyo',
             },
         }
-        if color_id:
-            event['colorId'] = color_id
-
-        return self.service.events().insert(
-            calendarId=Config.CALENDAR_ID,
-            body=event
-        ).execute()
-
-    def check_free_busy(self, time_min, time_max):
-        """Checks free/busy status. Returns raw response."""
-        body = {
-            "timeMin": time_min.isoformat() + 'Z',
-            "timeMax": time_max.isoformat() + 'Z',
-            "timeZone": "Asia/Tokyo",
-            "items": [{"id": Config.CALENDAR_ID}]
-        }
-        return self.service.freebusy().query(body=body).execute()
+        
+        return self.service.events().insert(calendarId=calendar_id, body=event).execute()

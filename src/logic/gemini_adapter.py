@@ -1,92 +1,63 @@
 import google.generativeai as genai
-import json
-from config.config import Config
+import os
 
 class GeminiAdapter:
+    """
+    Google Generative AI (Gemini) API と連携するためのアダプタクラス。
+    タスク名やメモから、重要度・緊急度・所要時間・場所などの「タスクの属性」を推定したり、
+    所要時間が長いタスクをサブタスクに分割する役割を担う。
+    """
     def __init__(self):
-        if Config.GEMINI_API_KEY:
-            genai.configure(api_key=Config.GEMINI_API_KEY)
-            self.model = genai.GenerativeModel('gemini-2.0-flash-exp') # Or gemini-pro
-        else:
-            self.model = None
-            print("Warning: GEMINI_API_KEY is not set.")
+        # APIキーは環境変数から取得するか、Config経由で取得する
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            # TODO: キーが存在しない場合のフォールバックやGUIへの警告表示ロジックを検討
+            print("WARNING: GEMINI_API_KEY environment variable not set.")
+        
+        genai.configure(api_key=api_key)
+        
+        # モデルの初期化 (gemini-1.5-flash または gemini-1.5-pro を想定)
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
 
-    def analyze_task(self, task_title, task_notes=""):
+    def analyze_task(self, title: str, notes: str) -> dict:
         """
-        Analyzes a task to determine importance, duration, location, and potential subtasks.
-        Returns a JSON object.
+        タスク名とメモを元に、タスクの詳細情報をAIで解析しJSON形式で返す。
         """
-        if not self.model:
-            return None
+        prompt = f'''
+以下のタスクを分析し、JSON形式で出力してください。
+タスク名: {title}
+メモ: {notes}
 
-        prompt = f"""
-        You are a smart task scheduler assistant. Analyze the following task and return a JSON object.
+出力形式は必ず以下の構造を持つJSONデータのみとしてください。
+{{
+  "duration_minutes": 推定所要時間(数値),
+  "importance": 1(低)～5(高)の数値,
+  "location": "場所の推定（無ければ null）",
+  "recommended_subtasks": ["サブタスク1", "サブタスク2"] (分割不要な場合は空配列)
+}}
+所要時間が60分を超えるか、工程が複数ある場合は recommended_subtasks に分割したタスク名を含めてください。
+'''
+        # AIに問い合わせ
+        response = self.model.generate_content(prompt)
         
-        Task Title: {task_title}
-        Task Notes: {task_notes}
-        
-        Output JSON format:
-        {{
-            "importance": (1-5, 5 being highest),
-            "estimated_duration_minutes": (integer, default 30 if unknown),
-            "location": (string or null),
-            "is_fixed_time": (boolean, true if the task implies a specific time like 'Dinner at 7pm'),
-            "suggested_subtasks": [
-                {{"title": "Subtask 1", "estimated_duration_minutes": 15}},
-                ... (only if the task is complex and needs breakdown)
-            ]
-        }}
-        
-        Return ONLY the JSON.
-        """
-        
+        # JSONのパース処理 (簡易的な抽出)
         try:
-            response = self.model.generate_content(prompt)
-            # Cleanup code blocks if present
-            text = response.text.replace("```json", "").replace("```", "").strip()
+            import json
+            import re
+            
+            # Markdownのコードブロックなどで囲まれている場合に対処
+            text = response.text
+            match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
+            if match:
+                text = match.group(1)
+                
             return json.loads(text)
         except Exception as e:
-            print(f"Gemini analysis failed: {e}")
-            return None
-
-    def estimate_travel_time(self, location_from, location_to):
-        """
-        Estimates travel time between two locations.
-        """
-        if not self.model or not location_from or not location_to:
-            return 30 # Default safety buffer
-
-        prompt = f"""
-        Estimate the travel time from "{location_from}" to "{location_to}" by public transport or driving (whichever is typical).
-        Return ONLY the number of minutes as an integer.
-        """
-        
-        try:
-            response = self.model.generate_content(prompt)
-            return int(''.join(filter(str.isdigit, response.text)))
-        except:
-            return 30
-
-    def categorize_task(self, task_title, available_lists):
-        """
-        Determines the best list for a task from available_lists.
-        Returns the name of the list.
-        """
-        if not self.model:
-            return None
-
-        list_names = [l['title'] for l in available_lists]
-        
-        prompt = f"""
-        Assign the task "{task_title}" to one of the following lists: {', '.join(list_names)}.
-        Return ONLY the list name. If no list is clearly appropriate, return "None".
-        """
-        
-        try:
-            response = self.model.generate_content(prompt)
-            chosen_list = response.text.strip()
-            if chosen_list in list_names:
-                return chosen_list
-            return None
-        except:
-            return None
+            print(f"Gemini解析エラー: {e}\nRaw Response: {response.text}")
+            # 解析失敗時のデフォルト値
+            return {
+                "duration_minutes": 30,
+                "importance": 3,
+                "location": None,
+                "recommended_subtasks": []
+            }
