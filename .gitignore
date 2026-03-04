@@ -40,3 +40,18 @@ client_secret_*.json
 
 # Project specific
 state.json
+
+# Test and Analysis Caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Execution Logs
+*.log
+
+# IDE and OS
+.idea/
+.DS_Store
+Thumbs.db

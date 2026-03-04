@@ -105,9 +105,10 @@ class TaskManagerApp:
 
             def refresh_approval_ui():
                 """保留中の分割タスクをUIに表示し、承認ボタンを提供する"""
-                approval_list = page.get_control("approval_list")
-                if not approval_list:
+                approval_container = page.get_control("approval_container")
+                if not approval_container:
                     return
+                approval_list = approval_container.content
                 approval_list.controls.clear()
                 
                 if not self.scheduler or not self.scheduler.pending_split_tasks:
@@ -206,7 +207,7 @@ class TaskManagerApp:
                     
                     # 承認待ちタスクの表示エリア
                     ft.Text("確認・承認が必要なタスク (過剰分割保留):", weight="bold", color="orange"),
-                    ft.Container(id="approval_container", content=ft.Column(id="approval_list"), margin=ft.margin.only(bottom=10)),
+                    ft.Container(content=ft.Column(), key="approval_container", margin=ft.margin.only(bottom=10)),
 
                     ft.Text("Logs (Check Console for Details):", weight="bold"),
                     
