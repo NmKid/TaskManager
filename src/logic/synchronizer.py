@@ -131,8 +131,8 @@ class Synchronizer:
 理由や説明は不要です。該当するものが全く無い場合は "None" と出力してください。
 '''     
         try:
-            # Geminiで分類実行
-            response = self.gemini.model.generate_content(prompt)
+            # Geminiで分類実行 (リトライ付き)
+            response = self.gemini.generate_content_with_retry(prompt)
             result_name = response.text.strip()
             
             # 結果が含まれているか柔軟に確認

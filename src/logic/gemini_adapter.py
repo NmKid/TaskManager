@@ -1,5 +1,7 @@
 import google.generativeai as genai
 import os
+import time
+from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 
 class GeminiAdapter:
     """
@@ -19,6 +21,27 @@ class GeminiAdapter:
         # モデルの初期化 (gemini-1.5-flash または gemini-1.5-pro を想定)
         self.model = genai.GenerativeModel('gemini-1.5-flash')
 
+    def generate_content_with_retry(self, prompt: str, max_retries: int = 3) -> any:
+        """
+        503等の容量不足エラーに対応するため、リトライ処理を挟んでAIによる生成を行う。
+        """
+        for count in range(max_retries):
+            try:
+                return self.model.generate_content(prompt)
+            except Exception as e:
+                error_msg = str(e)
+                # 503 Unavailable や Capacity Exhausted に対処
+                if "503" in error_msg or "UNAVAILABLE" in error_msg or "CAPACITY" in error_msg.upper():
+                    if count < max_retries - 1:
+                        sleep_time = (count + 1) * 15 # 15秒, 30秒と待機時間を増やす
+                        print(f"Gemini APIが混雑しています(503)。{sleep_time}秒後にリトライします... ({count+1}/{max_retries})")
+                        time.sleep(sleep_time)
+                        continue
+                # リトライ不可なエラー、または最大リトライ到達時
+                print(f"Gemini APIリクエストエラー: {e}")
+                raise e
+
+
     def analyze_task(self, title: str, notes: str) -> dict:
         """
         タスク名とメモを元に、タスクの詳細情報をAIで解析しJSON形式で返す。
@@ -37,8 +60,16 @@ class GeminiAdapter:
 }}
 所要時間が60分を超えるか、工程が複数ある場合は recommended_subtasks に分割したタスク名を含めてください。
 '''
-        # AIに問い合わせ
-        response = self.model.generate_content(prompt)
+        # AIに問い合わせ (リトライ付き)
+        try:
+            response = self.generate_content_with_retry(prompt)
+        except Exception:
+            return {
+                "duration_minutes": 30,
+                "importance": 3,
+                "location": None,
+                "recommended_subtasks": []
+            }
         
         # JSONのパース処理 (簡易的な抽出)
         try:
