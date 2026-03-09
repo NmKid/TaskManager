@@ -197,5 +197,8 @@ class Scheduler:
                  print("  -> カレンダー登録・タスク更新が完了しました。")
                  
         except Exception as e:
-             print(f"  -> カレンダー登録エラー: {e}")
+             error_msg = f"タスク「{title}」のカレンダー登録時にエラーが発生しました。\nネットワーク接続や認証設定を確認してください。\n詳細: {str(e)}"
+             print(f"  -> {error_msg}")
              traceback.print_exc()
+             # UI側で重要なエラーとしてダイアログ表示させるため ValueError を発生させる
+             raise ValueError(error_msg)

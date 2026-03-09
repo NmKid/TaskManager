@@ -105,9 +105,26 @@ class TaskManagerApp:
                             page.dialog = dlg_modal
                             dlg_modal.open = True
                         except Exception as ex:
-                            ui_log(f"Error in {error_name}: {ex}")
+                            error_msg = str(ex)
+                            ui_log(f"重大なエラー ({error_name}): {error_msg}")
                             import traceback
                             traceback.print_exc()
+                            
+                            def close_unexpected_dlg(e):
+                                dlg_modal.open = False
+                                page.update()
+                                
+                            dlg_modal = ft.AlertDialog(
+                                modal=True,
+                                title=ft.Text("システムエラー"),
+                                content=ft.Text(f"予期せぬエラーが発生しました。\n{error_msg}"),
+                                actions=[
+                                    ft.TextButton("閉じる", on_click=close_unexpected_dlg),
+                                ],
+                                actions_alignment=ft.MainAxisAlignment.END,
+                            )
+                            page.dialog = dlg_modal
+                            dlg_modal.open = True
                         finally:
                             btn.disabled = False
                             try:

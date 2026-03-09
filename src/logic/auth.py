@@ -44,7 +44,7 @@ class GoogleAuth:
                 self.creds = flow.run_local_server(port=0)
                 
             # 認証後、次回の実行のためにトークンをファイルに保存
-            with open(Config.TOKEN_CACHE_FILE, 'w') as token_file:
+            with open(Config.TOKEN_CACHE_FILE, 'w', encoding='utf-8') as token_file:
                 token_file.write(self.creds.to_json())
 
         return self.creds
