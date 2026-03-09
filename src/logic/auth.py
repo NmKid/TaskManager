@@ -35,6 +35,10 @@ class GoogleAuth:
             else:
                 # ユーザーの操作（ブラウザ）を要求して新しい認証を行う
                 # ※事前に client_secret_*.json を credentials.json 等にリネームして配置が必要
+                if not os.path.exists(Config.CREDENTIALS_FILE):
+                    raise FileNotFoundError(
+                        f"認証情報ファイルが見つかりません。Google Cloud ConsoleからOAuth設定をダウンロードし、以下のパスに「credentials.json」として配置してください。\nパス: {Config.CREDENTIALS_FILE}"
+                    )
                 flow = InstalledAppFlow.from_client_secrets_file(
                     Config.CREDENTIALS_FILE, SCOPES)
                 self.creds = flow.run_local_server(port=0)

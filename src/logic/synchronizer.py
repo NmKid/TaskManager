@@ -59,13 +59,11 @@ class Synchronizer:
         
         inbox = lists["inbox"]
         if not inbox:
-            print("Inbox (■メモ) リストが見つかりません。振り分けを中止します。")
-            return
+            raise ValueError("【設定エラー】\nGoogle Tasks に「■メモ」リストが見つかりません。\n受信箱となる「■メモ」という名前のリストを作成してから、再度実行してください。")
             
         active_lists = lists["active"]
         if not active_lists:
-            print("振り分け先の ■ リストが見つかりません。")
-            return
+            raise ValueError("【設定エラー】\nGoogle Tasks に振り分け先のリストが見つかりません。\n「■仕事」や「■プライベート」など、名前が「■」から始まるリストを1つ以上作成してから、再度実行してください。")
 
         inbox_id = inbox['id']
         

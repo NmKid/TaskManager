@@ -27,7 +27,7 @@ pip install -r requirements.txt
 
 ## 4. 実行手順 (Next Steps)
 
-1.  ダウンロードした `credentials.json` をこのフォルダ (`c:\Antigravity\TaskManager\`) に配置してください。
+1.  ダウンロードした `credentials.json` をこのフォルダ (`d:\GH\TaskManager\config\`) に配置してください。
 2.  以下のコマンドでアプリを起動します。
     ```powershell
     python src/main.py

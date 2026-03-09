@@ -4,7 +4,7 @@
 
 ### 1. 動作環境・準備の確認（最初に行うこと）
 まずはツールを動かすための設定がすべて完了しているか確認します。
-*   [ ] **API認証情報**: `c:\Antigravity\TaskManager\config\credentials.json` が配置されているか。
+*   [ ] **API認証情報**: `d:\GH\TaskManager\config\credentials.json` が配置されているか。
 *   [ ] **Gemini APIキー**: 環境変数 `GEMINI_API_KEY` （または `.env` などの設定）が設定されているか。
 *   [ ] **ライブラリ**: `flet`, `google-api-python-client`, `google-auth-httplib2`, `google-auth-oauthlib`, `google-generativeai` がインストールされているか。
 

@@ -6,7 +6,7 @@ PC再起動後など、次回以降の作業を再開する手順と、デバッ
 
 1.  **Google API 認証情報の配置**
     *   Google Cloud Console からダウンロードした OAuth クライアント ID の JSON ファイルを、以下のパスに配置してください。
-    *   配置先: `c:\Antigravity\TaskManager\config\credentials.json`
+    *   配置先: `d:\GH\TaskManager\config\credentials.json`
 2.  **必要なライブラリのインストール**
     *   ターミナルを開き、依存ライブラリをインストールします。
     *   コマンド: `pip install flet google-api-python-client google-auth-httplib2 google-auth-oauthlib google-generativeai`

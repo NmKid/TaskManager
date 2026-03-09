@@ -72,20 +72,40 @@ class TaskManagerApp:
                 except:
                     pass
 
-            def run_threaded(target_func, name):
+            def run_threaded(target_func, start_msg, end_msg, error_name):
                 def wrapper(e):
                     btn = e.control
                     btn.disabled = True
-                    ui_log(f"--- Starting {name} ---")
+                    ui_log(start_msg)
                     page.update()
                     
                     def worker():
                         try:
                             self.initialize_logic()
                             target_func()
-                            ui_log(f"--- {name} Complete ---")
+                            ui_log(end_msg)
+                        except ValueError as ve:
+                            # 設定エラーなどはユーザーへダイアログで通知する
+                            error_msg = str(ve)
+                            ui_log(f"Warning in {error_name}: {error_msg}")
+                            
+                            def close_dlg(e):
+                                dlg_modal.open = False
+                                page.update()
+                                
+                            dlg_modal = ft.AlertDialog(
+                                modal=True,
+                                title=ft.Text("エラー"),
+                                content=ft.Text(error_msg),
+                                actions=[
+                                    ft.TextButton("閉じる", on_click=close_dlg),
+                                ],
+                                actions_alignment=ft.MainAxisAlignment.END,
+                            )
+                            page.dialog = dlg_modal
+                            dlg_modal.open = True
                         except Exception as ex:
-                            ui_log(f"Error in {name}: {ex}")
+                            ui_log(f"Error in {error_name}: {ex}")
                             import traceback
                             traceback.print_exc()
                         finally:
@@ -192,13 +212,23 @@ class TaskManagerApp:
                         # 振り分け処理ボタン
                         ft.ElevatedButton(
                             "振り分け (Inbox -> Lists)", 
-                            on_click=run_threaded(run_organize, "Organization"), 
+                            on_click=run_threaded(
+                                run_organize, 
+                                "■メモリストから、他リストへの振り分け開始・・", 
+                                "振り分け終了", 
+                                "Organization"
+                            ), 
                             style=ft.ButtonStyle(padding=20)
                         ),
                         # スケジュール実行ボタン (Tasks -> Calのみ)
                         ft.ElevatedButton(
                             "スケジュール実行 (Tasks -> Cal)", 
-                            on_click=run_threaded(run_schedule, "Scheduling"), 
+                            on_click=run_threaded(
+                                run_schedule, 
+                                "カレンダーへのスケジュール登録開始・・", 
+                                "スケジュール登録終了", 
+                                "Scheduling"
+                            ), 
                             style=ft.ButtonStyle(padding=20)
                         ),
                     ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
