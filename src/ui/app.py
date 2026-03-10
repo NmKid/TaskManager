@@ -213,6 +213,24 @@ class TaskManagerApp:
                 refresh_approval_ui()
                 
             # Layout: UIの主構成
+            def _run_delete_scheduled(self):
+                """デバッグ用: すべてのタスクから【予定済】接頭辞を削除する"""
+                try:
+                    self.initialize_logic()
+                    tasklists = self.tasks_adapter.get_tasklists()
+                    for tl in tasklists:
+                        list_id = tl.get('id')
+                        if not list_id:
+                            continue
+                        tasks = self.tasks_adapter.get_tasks(list_id, show_completed=True, show_hidden=True)
+                        for task in tasks:
+                            title = task.get('title', '')
+                            if title.startswith('【予定済】'):
+                                new_title = title.replace('【予定済】', '', 1).strip()
+                                self.tasks_adapter.update_task(list_id, task['id'], {'title': new_title})
+                                self.log_callback(f"【予定済】を削除: {title} -> {new_title}")
+                except Exception as e:
+                    self.log_callback(f"【予定済】削除中にエラー: {e}")
             page.scroll = ft.ScrollMode.AUTO
             page.clean()
             
