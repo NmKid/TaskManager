@@ -25,6 +25,7 @@ class TaskManagerApp:
         self.state_manager = None
         self.synchronizer = None
         self.scheduler = None
+        self.log_callback = print
 
     def initialize_logic(self):
         # 既に初期化済みの場合はスキップ
@@ -47,7 +48,8 @@ class TaskManagerApp:
             self.tasks_adapter, 
             self.calendar_adapter, 
             self.state_manager, 
-            self.gemini_adapter
+            self.gemini_adapter,
+            logger=self.log_callback
         )
 
     def main(self, page: ft.Page):
@@ -71,6 +73,8 @@ class TaskManagerApp:
                     page.update()
                 except:
                     pass
+            
+            self.log_callback = ui_log
 
             def run_threaded(target_func, start_msg, end_msg, error_name):
                 def wrapper(e):
@@ -233,25 +237,41 @@ class TaskManagerApp:
                                 run_organize, 
                                 "■メモリストから、他リストへの振り分け開始・・", 
                                 "振り分け終了", 
+                            "振り分け (Inbox -> Lists)",
+                            on_click=run_threaded(
+                                run_organize,
+                                "■メモリストから、他リストへの振り分け開始・・",
+                                "振り分け終了",
                                 "Organization"
-                            ), 
+                            ),
                             style=ft.ButtonStyle(padding=20)
                         ),
                         # スケジュール実行ボタン (Tasks -> Calのみ)
                         ft.ElevatedButton(
-                            "スケジュール実行 (Tasks -> Cal)", 
+                            "スケジュール実行 (Tasks -> Cal)",
                             on_click=run_threaded(
-                                run_schedule, 
-                                "カレンダーへのスケジュール登録開始・・", 
-                                "スケジュール登録終了", 
+                                run_schedule,
+                                "カレンダーへのスケジュール登録開始・・",
+                                "スケジュール登録終了",
                                 "Scheduling"
-                            ), 
+                            ),
+                            style=ft.ButtonStyle(padding=20)
+                        ),
+                        # デバッグ用: 【予定済】タスクを全削除するボタン
+                        ft.ElevatedButton(
+                            "【予定済】削除 (デバッグ)",
+                            on_click=run_threaded(
+                                self._run_delete_scheduled,
+                                "【予定済】タスク削除開始...",
+                                "【予定済】タスク削除完了",
+                                "DeleteScheduled"
+                            ),
                             style=ft.ButtonStyle(padding=20)
                         ),
                     ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
-                    
+
                     ft.Divider(),
-                    
+
                     # 承認待ちタスクの表示エリア
                     ft.Text("確認・承認が必要なタスク (過剰分割保留):", weight="bold", color="orange"),
                     ft.Container(content=ft.Column(), key="approval_container", margin=ft.margin.only(bottom=10)),

@@ -21,9 +21,21 @@ class CalendarAdapter:
         指定した期間内の予定の入り具合 (Free/Busy 情報) を取得する。
         これにより、AIが空き時間を探してパズル的にタスクをスケジュール可能になる。
         """
+        # timeMin, timeMax は datetime オブジェクト。そのまま isoformat() に 'Z' を付けると
+        # tzinfo がある場合に +09:00Z のような不正なフォーマットになることがあるため、
+        # 確実にUTCに変換してからフォーマットするか、そのまま isoformat() を渡す。
+        # Google API は '2023-01-01T00:00:00+09:00' のような形式を好む。
+        t_min_str = time_min.isoformat()
+        if not time_min.tzinfo:
+            t_min_str += 'Z'
+            
+        t_max_str = time_max.isoformat()
+        if not time_max.tzinfo:
+            t_max_str += 'Z'
+
         body = {
-            "timeMin": time_min.isoformat() + 'Z',  # ISO8601フォーマット文字列化(UTC)
-            "timeMax": time_max.isoformat() + 'Z',
+            "timeMin": t_min_str,
+            "timeMax": t_max_str,
             "timeZone": "Asia/Tokyo",
             "items": [{"id": calendar_id}]
         }

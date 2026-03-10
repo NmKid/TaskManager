@@ -23,12 +23,14 @@ class Scheduler:
         tasks_adapter: TasksAdapter, 
         calendar_adapter: CalendarAdapter,
         state_manager: StateManager,
-        gemini_adapter: GeminiAdapter
+        gemini_adapter: GeminiAdapter,
+        logger=print
     ):
         self.tasks = tasks_adapter
         self.calendar = calendar_adapter
         self.state = state_manager
         self.gemini = gemini_adapter
+        self.log = logger
         
         # ユーザー承認待ちのタスクを保持するリスト（GUI等から後で承認・実行される）
         self.pending_split_tasks = []
@@ -50,7 +52,7 @@ class Scheduler:
         """
         未スケジュールタスクを取得・分析し、カレンダーに登録する一連の処理を実行。
         """
-        print("スケジューリング処理を開始します...")
+        self.log("スケジューリング処理を開始します...")
         
         active_lists = self._get_active_lists()
         target_tasks = []
@@ -73,7 +75,7 @@ class Scheduler:
                 if mapped_event_id:
                      is_still_scheduled = title.startswith(self.SCHEDULED_PREFIX) or ("[Ref:EventID:" in notes)
                      if not is_still_scheduled:
-                         print(f"[{title}] はユーザーにより予定が取り消されました。再登録対象とします。")
+                         self.log(f"[{title}] はユーザーにより予定が取り消されました。再登録対象とします。")
                          self.state.remove_link(task_id)
                          mapped_event_id = None # クリアして以後の処理を通す
                 
@@ -90,18 +92,23 @@ class Scheduler:
                 })
         
         if not target_tasks:
-            print("スケジューリング対象の未登録タスクはありません。")
+            self.log("スケジューリング対象の未登録タスクはありません。")
             return
             
-        print(f"{len(target_tasks)}件のタスクをスケジューリング対象として処理します。")
+        self.log(f"{len(target_tasks)}件のタスクをスケジューリング対象として処理します。")
 
         # 2. カレンダーの空き時間情報を取得 (本日から最大2週間先まで)
         now = datetime.datetime.now(datetime.timezone.utc)
         two_weeks_later = now + datetime.timedelta(days=14)
         
         freebusy_data = self.calendar.get_free_busy(time_min=now, time_max=two_weeks_later)
-        print(f"Busy期間の取得数: {len(freebusy_data)}")
+        self.log(f"Busy期間の取得数: {len(freebusy_data)}")
         
+        # 検索開始時間を直近の15分単位の時刻にする(UTC)
+        search_start = now
+        remainder = search_start.minute % 15
+        search_start += datetime.timedelta(minutes=15 - remainder, seconds=-search_start.second, microseconds=-search_start.microsecond)
+
         # 3. 各タスクの処理 (分析・分割・予定登録)
         for item in target_tasks:
             list_id = item["list_id"]
@@ -110,7 +117,7 @@ class Scheduler:
             notes = task.get('notes', '')
             task_id = task['id']
             
-            print(f"---\nタスク '{title}' を処理中...")
+            self.log(f"---\nタスク '{title}' を処理中...")
             
             # Geminiによる詳細分析
             analysis = self.gemini.analyze_task(title, notes)
@@ -119,8 +126,8 @@ class Scheduler:
             # タスク分割の判定
             # threshold を超えた場合は UI側での承認待ちとしてキューに置く (今回は即時カレンダー化せず保留)
             if len(subtasks) >= self.OVER_SPLIT_THRESHOLD:
-                print(f"  -> [保留] 分割数({len(subtasks)}個)が閾値(n={self.OVER_SPLIT_THRESHOLD})以上の過剰分割と判定されました。")
-                print(f"  -> ユーザーの確認と承認が必要です。")
+                self.log(f"  -> [保留] 分割数({len(subtasks)}個)が閾値(n={self.OVER_SPLIT_THRESHOLD})以上の過剰分割と判定されました。")
+                self.log(f"  -> ユーザーの確認と承認が必要です。")
                 
                 # 保留リストへ格納。UIからこの配列をチェックさせる想定
                 self.pending_split_tasks.append({
@@ -134,45 +141,83 @@ class Scheduler:
                 
             elif len(subtasks) > 1:
                 # 正常な範囲でのサブタスク分割実行
-                print(f"  -> {len(subtasks)}個のサブタスクに分割します。")
+                self.log(f"  -> {len(subtasks)}個のサブタスクに分割します。")
                 
                 # 元タスクの名称を【分割済】に変更
                 new_title = f"{self.SPLIT_PREFIX}{title}"
                 task['title'] = new_title
                 self.tasks.update_task(list_id, task_id, task)
                 
-                # 子タスクを作成（そして、この場ですぐにカレンダーを登録するか、次回のバッチに回すかは設計次第）
-                # 今回は子タスクを作成して、この後の登録フローに流し込む
+                # 子タスクを作成
                 for sub_title in subtasks:
                     # 子タスクをタスクリストへ登録
                     new_task_body = self.tasks.insert_task(list_id, sub_title, f"Parent: {title}")
                     if new_task_body:
-                         # 子タスクのスケジュール登録 (簡易的に直接呼び出し)
-                         self._schedule_single_task(list_id, new_task_body, analysis, freebusy_data)
+                         # 子タスクのスケジュール登録
+                         search_start = self._schedule_single_task(list_id, new_task_body, analysis, freebusy_data, search_start)
 
             else:
                 # 単一タスクの場合の通常スケジュール登録
-                self._schedule_single_task(list_id, task, analysis, freebusy_data)
+                search_start = self._schedule_single_task(list_id, task, analysis, freebusy_data, search_start)
 
-        print("スケジューリング処理が完了しました。")
+        self.log("スケジューリング処理が完了しました。")
 
-    def _schedule_single_task(self, list_id: str, task: dict, analysis: dict, freebusy_data: list):
+    def _schedule_single_task(self, list_id: str, task: dict, analysis: dict, freebusy_data: list, search_start: datetime.datetime):
         """
         単一のタスクをカレンダーの空き時間に登録し、タスクの名称・メモを更新する内部処理。
-        (空き時間の細かな探索ロジックは簡易版。要件通り移動時間なども追加可能)
         """
         title = task.get('title', '')
         notes = task.get('notes', '')
         task_id = task['id']
-        duration = analysis.get("duration_minutes", 30)
+        # 15分単位にするため不足分を切り上げる（最低15分）
+        base_dur = analysis.get("duration_minutes", 30)
+        rem = base_dur % 15
+        duration = base_dur if rem == 0 else base_dur + (15 - rem)
         
-        # NOTE: 簡易的なスケジュール登録。本来は freebusy_data と duration から
-        # スケジュール可能な最も早い日時(datetime)を計算する。
-        # ここでは直近（実行時）からduration分確保するダミー時間を設定（要改善）
-        start_time = datetime.datetime.now()
-        end_time = start_time + datetime.timedelta(minutes=duration)
+        # ISO形式の文字列をdatetime(UTC)に変換するヘルパー
+        def parse_iso(ts_str):
+            # Google APIの '2023-01-01T10:00:00Z' や '+09:00' に対応
+            ts_str = ts_str.replace('Z', '+00:00')
+            return datetime.datetime.fromisoformat(ts_str)
+            
+        # -----------------------------
+        # 空き時間 (free space) 探索ロジック
+        # -----------------------------
+        candidate_start = search_start
+        while True:
+            candidate_end = candidate_start + datetime.timedelta(minutes=duration)
+            conflict = False
+            
+            for busy in freebusy_data:
+                b_start = parse_iso(busy['start'])
+                b_end = parse_iso(busy['end'])
+                
+                # 候補時間がbusy期間に被っているか検出
+                latest_start = max(candidate_start, b_start)
+                earliest_end = min(candidate_end, b_end)
+                
+                if latest_start < earliest_end:  # overlap exists
+                    conflict = True
+                    # 候補をbusyの終了時刻まで移動させる
+                    candidate_start = b_end
+                    # 新しいcandidate_startを15分スナップに乗せる
+                    rem = candidate_start.minute % 15
+                    if rem != 0 or candidate_start.second != 0 or candidate_start.microsecond != 0:
+                        candidate_start += datetime.timedelta(minutes=15 - rem, seconds=-candidate_start.second, microseconds=-candidate_start.microsecond)
+                    break
+            
+            if not conflict:
+                # オーバーラップするbusy期間がなければ、ここを空き時間として決定
+                start_time = candidate_start
+                end_time = candidate_end
+                break
+
+        # 日本時間(JST)でログ出力するためのフォーマット
+        jst_tz = datetime.timezone(datetime.timedelta(hours=9))
+        start_jst = start_time.astimezone(jst_tz)
+        end_jst = end_time.astimezone(jst_tz)
         
-        print(f"  -> カレンダーへイベント登録中... (予定: {duration}分)")
+        self.log(f"  -> カレンダーへイベント登録中... [{start_jst.strftime('%H:%M')} - {end_jst.strftime('%H:%M')} , 予定: {duration}分]")
         try:
              # カレンダーAPIへ登録
              event = self.calendar.insert_event(
@@ -185,6 +230,12 @@ class Scheduler:
              event_id = event.get('id')
              
              if event_id:
+                 # メモリ上のbusyリストに今回の登録分を追加し、直後のタスクが被らないようにする
+                 freebusy_data.append({
+                     'start': event['start'].get('dateTime', event['start'].get('date')),
+                     'end': event['end'].get('dateTime', event['end'].get('date'))
+                 })
+                 
                  # タスク側へ【予定済】の印とIDを付与して更新
                  new_title = f"{self.SCHEDULED_PREFIX}{title}"
                  new_notes = f"{notes}\n\n[Ref:EventID:{event_id}]"
@@ -194,11 +245,14 @@ class Scheduler:
                  self.tasks.update_task(list_id, task_id, task)
                  self.state.link_task_to_event(task_id, event_id)
                  
-                 print("  -> カレンダー登録・タスク更新が完了しました。")
+                 self.log(f"  -> {title} のカレンダー登録・タスク更新が完了しました。")
                  
         except Exception as e:
              error_msg = f"タスク「{title}」のカレンダー登録時にエラーが発生しました。\nネットワーク接続や認証設定を確認してください。\n詳細: {str(e)}"
-             print(f"  -> {error_msg}")
+             self.log(f"  -> {error_msg}")
              traceback.print_exc()
              # UI側で重要なエラーとしてダイアログ表示させるため ValueError を発生させる
              raise ValueError(error_msg)
+             
+        # 次の検索開始時間をこのタスクの終了直後として返す
+        return end_time
