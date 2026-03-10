@@ -64,9 +64,9 @@ class TaskManagerApp:
             log_view = ft.Column(scroll=ft.ScrollMode.ALWAYS, expand=True)
             
             # Log function
-            def ui_log(message):
+            def ui_log(message, color=None):
                 print(message)
-                log_view.controls.append(ft.Text(str(message).strip(), selectable=True, font_family="Consolas"))
+                log_view.controls.append(ft.Text(str(message).strip(), selectable=True, font_family="Consolas", color=color))
                 try:
                     page.update()
                 except:
@@ -87,7 +87,7 @@ class TaskManagerApp:
                         except ValueError as ve:
                             # 設定エラーなどはユーザーへダイアログで通知する
                             error_msg = str(ve)
-                            ui_log(f"Warning in {error_name}: {error_msg}")
+                            ui_log(f"Warning in {error_name}: {error_msg}", color="black")
                             
                             def close_dlg(e):
                                 dlg_modal.open = False
@@ -95,8 +95,8 @@ class TaskManagerApp:
                                 
                             dlg_modal = ft.AlertDialog(
                                 modal=True,
-                                title=ft.Text("エラー"),
-                                content=ft.Text(error_msg),
+                                title=ft.Text("エラー", color="black"),
+                                content=ft.Text(error_msg, color="black"),
                                 actions=[
                                     ft.TextButton("閉じる", on_click=close_dlg),
                                 ],
@@ -106,7 +106,7 @@ class TaskManagerApp:
                             dlg_modal.open = True
                         except Exception as ex:
                             error_msg = str(ex)
-                            ui_log(f"重大なエラー ({error_name}): {error_msg}")
+                            ui_log(f"重大なエラー ({error_name}): {error_msg}", color="black")
                             import traceback
                             traceback.print_exc()
                             
@@ -116,8 +116,8 @@ class TaskManagerApp:
                                 
                             dlg_modal = ft.AlertDialog(
                                 modal=True,
-                                title=ft.Text("システムエラー"),
-                                content=ft.Text(f"予期せぬエラーが発生しました。\n{error_msg}"),
+                                title=ft.Text("システムエラー", color="black"),
+                                content=ft.Text(f"予期せぬエラーが発生しました。\n{error_msg}", color="black"),
                                 actions=[
                                     ft.TextButton("閉じる", on_click=close_unexpected_dlg),
                                 ],
