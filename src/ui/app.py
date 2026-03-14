@@ -255,12 +255,18 @@ class TaskManagerApp:
                                 run_organize, 
                                 "■メモリストから、他リストへの振り分け開始・・", 
                                 "振り分け終了", 
-                            "振り分け (Inbox -> Lists)",
-                            on_click=run_threaded(
-                                run_organize,
-                                "■メモリストから、他リストへの振り分け開始・・",
-                                "振り分け終了",
                                 "Organization"
+                            ),
+                            style=ft.ButtonStyle(padding=20)
+                        ),
+                        # 元に戻すボタン（テスト用機能）
+                        ft.ElevatedButton(
+                            "元に戻す",
+                            on_click=run_threaded(
+                                lambda: self.scheduler.undo_scheduled_tasks() if self.scheduler else None,
+                                "Google Tasks側の未スケジュール化(Undo)を開始します...",
+                                "Undo処理完了",
+                                "Undo"
                             ),
                             style=ft.ButtonStyle(padding=20)
                         ),

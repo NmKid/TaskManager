@@ -217,7 +217,7 @@ class Scheduler:
         start_jst = start_time.astimezone(jst_tz)
         end_jst = end_time.astimezone(jst_tz)
         
-        self.log(f"  -> カレンダーへイベント登録中... [{start_jst.strftime('%H:%M')} - {end_jst.strftime('%H:%M')} , 予定: {duration}分]")
+        self.log(f"  -> 「{title}」をカレンダーへイベント登録中... [{start_jst.strftime('%H:%M')} - {end_jst.strftime('%H:%M')} , 予定: {duration}分]")
         try:
              # カレンダーAPIへ登録
              event = self.calendar.insert_event(
@@ -256,3 +256,53 @@ class Scheduler:
              
         # 次の検索開始時間をこのタスクの終了直後として返す
         return end_time
+
+    def undo_scheduled_tasks(self):
+        """
+        （テスト用機能）
+        「【予定済】」となっているタスクから接頭辞とメモ欄のEventID表記を削除し、
+        タスク側のみを未スケジュールの状態に復元する。
+        ※ カレンダーの予定自体はこの処理では削除されません。
+        """
+        import re
+        self.log("元に戻す(Undo) 処理を開始します...")
+        
+        active_lists = self._get_active_lists()
+        undo_count = 0
+        
+        for lst in active_lists:
+            list_id = lst['id']
+            # すべてのタスクを取得（完了済み等も必要に応じて含む場合は show_completed=True 等を要検討だが今回はデフォルト）
+            tasks = self.tasks.get_tasks(list_id)
+            
+            for task in tasks:
+                title = task.get('title', '')
+                notes = task.get('notes', '')
+                task_id = task['id']
+                
+                is_scheduled_title = title.startswith(self.SCHEDULED_PREFIX)
+                has_event_id_note = "[Ref:EventID:" in notes
+                
+                if is_scheduled_title or has_event_id_note:
+                    self.log(f"  -> 対象タスク発見: {title}")
+                    
+                    # 1. タイトルの復元
+                    if is_scheduled_title:
+                        title = title.replace(self.SCHEDULED_PREFIX, "", 1).strip()
+                        task['title'] = title
+                        
+                    # 2. メモの復元 (ID部分のみ正規表現で削除する)
+                    if has_event_id_note:
+                        # 改行を含めて綺麗に消すパターン: 0個以上の改行 + [Ref:EventID:任意の文字列]
+                        # re.sub でパターンに一致する部分を空文字列に置換
+                        notes = re.sub(r'\n*\[Ref:EventID:.*?\]\n*', '', notes)
+                        task['notes'] = notes.strip()
+                        
+                    # 3. Tasks API 経由で更新
+                    self.tasks.update_task(list_id, task_id, task)
+                    self.state.remove_link(task_id) # ステートの紐付けも解除
+                    
+                    undo_count += 1
+                    
+        self.log(f"元に戻す(Undo) 処理が完了しました。（更新件数: {undo_count}件）")
+
