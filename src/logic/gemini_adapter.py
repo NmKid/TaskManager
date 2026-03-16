@@ -21,7 +21,7 @@ class GeminiAdapter:
         genai.configure(api_key=api_key)
         
         # モデルの初期化 (gemini-1.5-flash または gemini-1.5-pro を想定)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
     def generate_content_with_retry(self, prompt: str, max_retries: int = 3) -> any:
         """
