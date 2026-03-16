@@ -18,10 +18,11 @@ class GeminiAdapter:
             # TODO: キーが存在しない場合のフォールバックやGUIへの警告表示ロジックを検討
             print("WARNING: GEMINI_API_KEY environment variable not set.")
         
-        genai.configure(api_key=api_key)
+        # APIバージョンの指定 (v1beta -> v1)
+        genai.configure(api_key=api_key, transport='rest', client_options={'api_endpoint': 'generativelanguage.googleapis.com'})
         
-        # モデルの初期化 (gemini-1.5-flash または gemini-1.5-pro を想定)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        # モデルの初期化 (gemini-2.5-pro を想定)
+        self.model = genai.GenerativeModel('gemini-2.5-pro')
 
     def generate_content_with_retry(self, prompt: str, max_retries: int = 3) -> any:
         """
