@@ -213,24 +213,7 @@ class TaskManagerApp:
                 refresh_approval_ui()
                 
             # Layout: UIの主構成
-            def run_delete_scheduled():
-                """デバッグ用: すべてのタスクから【予定済】接頭辞を削除する"""
-                try:
-                    self.initialize_logic()
-                    tasklists = self.tasks_adapter.get_tasklists()
-                    for tl in tasklists:
-                        list_id = tl.get('id')
-                        if not list_id:
-                            continue
-                        tasks = self.tasks_adapter.get_tasks(list_id, show_completed=True, show_hidden=True)
-                        for task in tasks:
-                            title = task.get('title', '')
-                            if title.startswith('【予定済】'):
-                                new_title = title.replace('【予定済】', '', 1).strip()
-                                self.tasks_adapter.update_task(list_id, task['id'], {'title': new_title})
-                                self.log_callback(f"【予定済】を削除: {title} -> {new_title}")
-                except Exception as e:
-                    self.log_callback(f"【予定済】削除中にエラー: {e}")
+
             page.scroll = ft.ScrollMode.AUTO
             page.clean()
             
@@ -284,17 +267,6 @@ class TaskManagerApp:
                                 "カレンダーへのスケジュール登録開始・・",
                                 "スケジュール登録終了",
                                 "Scheduling"
-                            ),
-                            style=ft.ButtonStyle(padding=20)
-                        ),
-                        # デバッグ用: 【予定済】タスクを全削除するボタン
-                        ft.ElevatedButton(
-                            "【予定済】削除 (デバッグ)",
-                            on_click=run_threaded(
-                                run_delete_scheduled,
-                                "【予定済】タスク削除開始...",
-                                "【予定済】タスク削除完了",
-                                "DeleteScheduled"
                             ),
                             style=ft.ButtonStyle(padding=20)
                         ),
