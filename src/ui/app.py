@@ -63,7 +63,7 @@ class TaskManagerApp:
             page.update()
 
             # UI Elements
-            log_view = ft.Column(scroll=ft.ScrollMode.ALWAYS, expand=True)
+            log_view = ft.Column(scroll=ft.ScrollMode.ALWAYS, auto_scroll=True, expand=True)
             
             # Log function
             def ui_log(message, color=None):
@@ -234,6 +234,12 @@ class TaskManagerApp:
             page.scroll = ft.ScrollMode.AUTO
             page.clean()
             
+            # 呼び出し用ラップ関数
+            def run_undo():
+                if not self.scheduler:
+                    self.initialize_logic()
+                self.scheduler.undo_scheduled_tasks()
+                
             page.add(
                 ft.Column([
                     ft.Container(
@@ -263,7 +269,7 @@ class TaskManagerApp:
                         ft.ElevatedButton(
                             "元に戻す",
                             on_click=run_threaded(
-                                lambda: self.scheduler.undo_scheduled_tasks() if self.scheduler else None,
+                                run_undo,
                                 "Google Tasks側の未スケジュール化(Undo)を開始します...",
                                 "Undo処理完了",
                                 "Undo"
