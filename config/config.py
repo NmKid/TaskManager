@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # アプリケーション全体で利用する設定（パス、定数など）を保持するクラス
 class Config:
@@ -24,3 +25,6 @@ class Config:
 
 # モジュール読み込み時に自動でディレクトリ初期化を行う
 Config.init_dirs()
+
+# .env ファイルが存在する場合は環境変数を読み込む
+load_dotenv(dotenv_path=Config.BASE_DIR / ".env")
