@@ -213,7 +213,7 @@ class TaskManagerApp:
                 refresh_approval_ui()
                 
             # Layout: UIの主構成
-            def _run_delete_scheduled(self):
+            def run_delete_scheduled():
                 """デバッグ用: すべてのタスクから【予定済】接頭辞を削除する"""
                 try:
                     self.initialize_logic()
@@ -285,7 +285,7 @@ class TaskManagerApp:
                         ft.ElevatedButton(
                             "【予定済】削除 (デバッグ)",
                             on_click=run_threaded(
-                                self._run_delete_scheduled,
+                                run_delete_scheduled,
                                 "【予定済】タスク削除開始...",
                                 "【予定済】タスク削除完了",
                                 "DeleteScheduled"
