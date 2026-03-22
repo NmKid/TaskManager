@@ -70,6 +70,10 @@ class TaskManagerApp:
                 print(message)
                 log_view.controls.append(ft.Text(str(message).strip(), selectable=True, font_family="Consolas", color=color))
                 try:
+                    log_view.update()
+                except:
+                    pass
+                try:
                     page.update()
                 except:
                     pass

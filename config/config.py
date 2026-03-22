@@ -1,6 +1,10 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        pass
 
 # アプリケーション全体で利用する設定（パス、定数など）を保持するクラス
 class Config:

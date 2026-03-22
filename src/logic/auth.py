@@ -31,13 +31,17 @@ class GoogleAuth:
         if not self.creds or not self.creds.valid:
             if self.creds and self.creds.expired and self.creds.refresh_token:
                 # リフレッシュトークンで新しいアクセストークンを取得
-                self.creds.refresh(Request())
-            else:
+                try:
+                    self.creds.refresh(Request())
+                except Exception:
+                    # リフレッシュに失敗したら新規取得へ
+                    self.creds = None
+            if not self.creds:
                 # ユーザーの操作（ブラウザ）を要求して新しい認証を行う
                 # ※事前に client_secret_*.json を credentials.json 等にリネームして配置が必要
                 if not os.path.exists(Config.CREDENTIALS_FILE):
                     raise FileNotFoundError(
-                        f"認証情報ファイルが見つかりません。Google Cloud ConsoleからOAuth設定をダウンロードし、以下のパスに「credentials.json」として配置してください。\nパス: {Config.CREDENTIALS_FILE}"
+                        f"認証情報ファイルが見つかりません。Google Cloud ConsoleからOAuth設定をダウンロードし、以下のパスに「credentials.json」として配置してください。\\nパス: {Config.CREDENTIALS_FILE}"
                     )
                 flow = InstalledAppFlow.from_client_secrets_file(
                     Config.CREDENTIALS_FILE, SCOPES)

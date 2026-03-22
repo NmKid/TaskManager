@@ -50,15 +50,23 @@ class CalendarAdapter:
         カレンダーに新しい予定を登録する。
         スケジュール実行（Tasks -> Calendar）専用。
         """
+        start_str = start_time.isoformat()
+        if not start_time.tzinfo:
+            start_str += '+09:00'
+            
+        end_str = end_time.isoformat()
+        if not end_time.tzinfo:
+            end_str += '+09:00'
+
         event = {
             'summary': summary,
             'description': description,
             'start': {
-                'dateTime': start_time.isoformat() + '+09:00', # 日本時間
+                'dateTime': start_str,
                 'timeZone': 'Asia/Tokyo',
             },
             'end': {
-                'dateTime': end_time.isoformat() + '+09:00',
+                'dateTime': end_str,
                 'timeZone': 'Asia/Tokyo',
             },
         }

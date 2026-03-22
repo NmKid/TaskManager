@@ -267,10 +267,10 @@ class Scheduler:
         import re
         self.log("元に戻す(Undo) 処理を開始します...")
         
-        active_lists = self._get_active_lists()
+        all_lists = self.tasks.get_tasklists()
         undo_count = 0
         
-        for lst in active_lists:
+        for lst in all_lists:
             list_id = lst['id']
             # すべてのタスクを取得（完了済み等も必要に応じて含む場合は show_completed=True 等を要検討だが今回はデフォルト）
             tasks = self.tasks.get_tasks(list_id)
