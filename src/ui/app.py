@@ -239,11 +239,11 @@ class TaskManagerApp:
                     ft.Row([
                         # 振り分け処理ボタン
                         ft.ElevatedButton(
-                            "振り分け (Inbox -> Lists)", 
+                            "振り分け (Inbox -> Lists)",
                             on_click=run_threaded(
-                                run_organize, 
-                                "■メモリストから、他リストへの振り分け開始・・", 
-                                "振り分け終了", 
+                                run_organize,
+                                "■メモリストから、他リストへの振り分け開始・・",
+                                "振り分け終了",
                                 "Organization"
                             ),
                             style=ft.ButtonStyle(padding=20)
