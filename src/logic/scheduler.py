@@ -48,7 +48,7 @@ class Scheduler:
                 active.append(lst)
         return active
 
-    def schedule_tasks(self):
+    def schedule_tasks(self, work_start_hour: int = 6, work_end_hour: int = 22):
         """
         未スケジュールタスクを取得・分析し、カレンダーに登録する一連の処理を実行。
         """
@@ -102,7 +102,31 @@ class Scheduler:
         two_weeks_later = now + datetime.timedelta(days=14)
         
         freebusy_data = self.calendar.get_free_busy(time_min=now, time_max=two_weeks_later)
-        self.log(f"Busy期間の取得数: {len(freebusy_data)}")
+        self.log(f"APIからのBusy期間の取得数: {len(freebusy_data)}")
+        
+        # --- 架空のBusy（時間外ブロック）を注入 ---
+        # 1日のうち、終了時間(work_end_hour) 〜 翌日の開始時間(work_start_hour) をBusyとして扱う
+        # ※JSTタイムゾーンを前提とする（UIで指定される時間が日本時間であるため）
+        jst_tz = datetime.timezone(datetime.timedelta(hours=9))
+        now_jst = now.astimezone(jst_tz)
+        base_date = now_jst.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        for i in range(16): # 余裕を持って前後1日含む16日分生成
+            current_day = base_date + datetime.timedelta(days=i-1)
+            
+            # ブロック開始: その日の end_hour
+            block_start = current_day.replace(hour=work_end_hour)
+            # ブロック終了: 翌日の start_hour
+            block_end = current_day + datetime.timedelta(days=1)
+            block_end = block_end.replace(hour=work_start_hour)
+            
+            # UTCのISOフォーマット文字列で injection
+            freebusy_data.append({
+                'start': block_start.astimezone(datetime.timezone.utc).isoformat(),
+                'end': block_end.astimezone(datetime.timezone.utc).isoformat()
+            })
+            
+        self.log(f"※時間外ブロックを注入しました（現在の総Busyブロック数={len(freebusy_data)}）")
         
         # 検索開始時間を直近の15分単位の時刻にする(UTC)
         search_start = now

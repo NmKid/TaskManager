@@ -42,7 +42,8 @@ class TaskManagerApp:
             self.tasks_adapter, 
             self.calendar_adapter, 
             self.state_manager, 
-            self.gemini_adapter
+            self.gemini_adapter,
+            logger=self.log_callback
         )
         self.scheduler = Scheduler(
             self.tasks_adapter, 
@@ -147,6 +148,24 @@ class TaskManagerApp:
             def run_organize():
                 # ■メモにあるタスクを各■リストに振り分ける処理
                 self.synchronizer.organize_inbox()
+                
+                # 振り分け終了後にメッセージを表示
+                def close_msg_dlg(e):
+                    dlg_msg.open = False
+                    page.update()
+                    
+                dlg_msg = ft.AlertDialog(
+                    modal=False,
+                    title=ft.Text("完了", color="black"),
+                    content=ft.Text("タスクの振り分け処理が終了しました。", color="black"),
+                    actions=[ft.TextButton("OK", on_click=close_msg_dlg)],
+                )
+                page.dialog = dlg_msg
+                dlg_msg.open = True
+                try:
+                    page.update()
+                except:
+                    pass
 
             def refresh_approval_ui():
                 """保留中の分割タスクをUIに表示し、承認ボタンを提供する"""
@@ -212,14 +231,36 @@ class TaskManagerApp:
                     pass
 
             def run_schedule():
+                try:
+                    start_h = int(start_hour_dd.value)
+                    end_h = int(end_hour_dd.value)
+                except (ValueError, TypeError):
+                    start_h, end_h = 6, 22
+                if start_h >= end_h:
+                    ui_log("設定された時間帯が不正(開始 >= 終了)なため、デフォルト(06〜22)で実行します。", color="orange")
+                    start_h, end_h = 6, 22
                 # Tasks -> Calendarへのスケジューリング処理（Cal -> Tasksの同期は行わない）
-                self.scheduler.schedule_tasks()
+                self.scheduler.schedule_tasks(work_start_hour=start_h, work_end_hour=end_h)
                 refresh_approval_ui()
                 
             # Layout: UIの主構成
 
             page.scroll = ft.ScrollMode.AUTO
             page.clean()
+            
+            # --- スケジュール時間設定のUI要素 ---
+            start_hour_dd = ft.Dropdown(
+                width=100,
+                options=[ft.dropdown.Option(f"{i:02d}") for i in range(24)],
+                value="06",
+                label="開始"
+            )
+            end_hour_dd = ft.Dropdown(
+                width=100,
+                options=[ft.dropdown.Option(f"{i:02d}") for i in range(24)],
+                value="22",
+                label="終了"
+            )
             
             # 呼び出し用ラップ関数
             def run_undo():
@@ -241,9 +282,19 @@ class TaskManagerApp:
                     ft.Divider(),
                     
                     ft.Row([
+                        ft.Text("登録可能時間帯:", weight="bold"),
+                        start_hour_dd,
+                        ft.Text("～"),
+                        end_hour_dd,
+                        ft.Text("※日またぎ設定不可", size=12, color="grey")
+                    ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
+
+                    ft.Divider(),
+
+                    ft.Row([
                         # 振り分け処理ボタン
                         ft.ElevatedButton(
-                            "振り分け (Inbox -> Lists)",
+                            "■メモー＞",
                             on_click=run_threaded(
                                 run_organize,
                                 "■メモリストから、他リストへの振り分け開始・・",
