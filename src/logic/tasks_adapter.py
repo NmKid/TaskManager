@@ -25,15 +25,24 @@ class TasksAdapter:
 
     def get_tasks(self, tasklist_id: str, show_completed=False, show_hidden=False) -> list:
         """
-        指定したタスクリストIDに含まれるタスクを取得する。
+        指定したタスクリストIDに含まれるタスクをすべて取得する（ページネーション対応）。
         デフォルトでは完了済みのタスクや非表示タスクは除外して取得する。
         """
-        results = self.service.tasks().list(
-            tasklist=tasklist_id, 
-            showCompleted=show_completed,
-            showHidden=show_hidden
-        ).execute()
-        return results.get('items', [])
+        tasks = []
+        page_token = None
+        while True:
+            results = self.service.tasks().list(
+                tasklist=tasklist_id, 
+                showCompleted=show_completed,
+                showHidden=show_hidden,
+                maxResults=100,
+                pageToken=page_token
+            ).execute()
+            tasks.extend(results.get('items', []))
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                break
+        return tasks
 
     def insert_task(self, tasklist_id: str, title: str, notes: str = "") -> dict:
         """

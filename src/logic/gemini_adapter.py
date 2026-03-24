@@ -98,3 +98,84 @@ class GeminiAdapter:
                 "location": None,
                 "recommended_subtasks": []
             }
+
+    def sort_tasks_order(self, tasks_data: list) -> dict:
+        """
+        対象リストの未スケジュールタスク群(辞書配列)を受け取り、AIで重複を検知・排除した上で
+        最適な実行順序に並び替えた結果を返す。
+        戻り値: {"sorted": [タスクオブジェクト...], "duplicates": [タスクオブジェクト...]}
+        """
+        if not tasks_data or len(tasks_data) <= 1:
+            return {"sorted": tasks_data, "duplicates": []}
+            
+        tasks_text = ""
+        for item in tasks_data:
+            t = item["task"]
+            tid = t.get('id')
+            title = t.get('title', '')
+            notes = t.get('notes', '')
+            due = t.get('due', 'なし')
+            tasks_text += f"ID: {tid}\nタイトル: {title}\n期限: {due}\nメモ: {notes}\n---\n"
+
+        prompt = f'''
+以下のタスク群を分析し、内容が完全に重複しているタスク（全く同じ意味・目的のタスク）があれば片方を削除対象としてください。
+残ったタスクについて、最も効率的かつ合理的な順番（特に期限情報を重視）で実行するための最適な並び順を検討してください。
+出力は、必ず以下のキーを持つJSONオブジェクトとしてください。それ以外のテキストは一切含めないでください。
+- "sorted_ids": 実行するタスクのIDを最適な順序で並べた配列
+- "duplicate_ids": 重複として削除（無視）すべきと判定したタスクのIDの配列（重複がない場合は空配列）
+
+【タスク一覧】
+{tasks_text}
+
+【出力形式の例】
+{{
+  "sorted_ids": ["id_C", "id_A"],
+  "duplicate_ids": ["id_B"]
+}}
+'''
+        # 失敗時のフェイルセーフ用（元の順序をそのまま返す）
+        fallback_result = {"sorted": tasks_data, "duplicates": []}
+        
+        try:
+            response = self.generate_content_with_retry(prompt)
+        except Exception as e:
+            print(f"タスク並び替えAPIエラー: {e}")
+            return fallback_result
+            
+        try:
+            import json
+            import re
+            
+            text = response.text
+            match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
+            if match:
+                text = match.group(1)
+                
+            result_json = json.loads(text)
+            if isinstance(result_json, dict) and "sorted_ids" in result_json:
+                sorted_ids = result_json.get("sorted_ids", [])
+                duplicate_ids = result_json.get("duplicate_ids", [])
+                
+                id_to_task = {item["task"]["id"]: item for item in tasks_data}
+                
+                result_tasks = []
+                for sid in sorted_ids:
+                    if sid in id_to_task and id_to_task[sid] not in result_tasks:
+                        result_tasks.append(id_to_task[sid])
+                        
+                duplicate_tasks = []
+                for did in duplicate_ids:
+                    if did in id_to_task and id_to_task[did] not in duplicate_tasks and id_to_task[did] not in result_tasks:
+                        duplicate_tasks.append(id_to_task[did])
+                
+                # AIが漏らした（sortedにもduplicateにもない）IDについて、フェイルセーフとして末尾に付け足す
+                for item in tasks_data:
+                    if item not in result_tasks and item not in duplicate_tasks:
+                        result_tasks.append(item)
+                        
+                return {"sorted": result_tasks, "duplicates": duplicate_tasks}
+            else:
+                return fallback_result
+        except Exception as e:
+            print(f"タスク並び替え解析/重複検知エラー: {e}")
+            return fallback_result

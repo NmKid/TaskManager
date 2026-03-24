@@ -57,11 +57,14 @@ class Scheduler:
         active_lists = self._get_active_lists()
         target_tasks = []
         
-        # 1. 各リストから未完了・未スケジュールのタスクを収集
+        # 1. 各リストから未完了・未スケジュールのタスクを収集し、AIで順序最適化させる
         for lst in active_lists:
             list_id = lst['id']
+            list_title = lst.get('title', 'Unknown')
             # 未完了タスクのみを取得（showCompleted=Falseはデフォルト）
             tasks = self.tasks.get_tasks(list_id)
+            
+            list_target_tasks = []
             
             for task in tasks:
                 title = task.get('title', '')
@@ -86,10 +89,41 @@ class Scheduler:
                 if title.startswith(self.SPLIT_PREFIX):
                     continue
                     
-                target_tasks.append({
+                list_target_tasks.append({
                     "list_id": list_id,
                     "task": task
                 })
+                
+            # リスト内に複数件のタスクがあればAIにて最適順序にソートする
+            if list_target_tasks:
+                if len(list_target_tasks) > 1:
+                    self.log(f"◆◆◆ 【{list_title}】リストのタスク実行順序をAIが最適化しています...")
+                    sort_result = self.gemini.sort_tasks_order(list_target_tasks)
+                    
+                    # 重複タスクの処理
+                    duplicates = sort_result.get("duplicates", [])
+                    for dup_item in duplicates:
+                        dup_task = dup_item["task"]
+                        dup_id = dup_task["id"]
+                        dup_title = dup_task.get("title", "")
+                        dup_notes = dup_task.get("notes", "")
+                        
+                        self.log(f"  -> [重複削除] AIが重複と判定したタスクを削除します: {dup_title}")
+                        try:
+                            # 削除後（ゴミ箱内）でも判別しやすくするため、タイトルとメモを更新してから削除する
+                            dup_task["title"] = f"★重複★{dup_title}"
+                            dup_task["notes"] = f"{dup_notes}\n重複タスクゆえ削除".strip()
+                            self.tasks.update_task(list_id, dup_id, dup_task)
+                            
+                            # 更新後にGoogle Tasksから削除（ゴミ箱へ）
+                            self.tasks.delete_task(list_id, dup_id)
+                        except Exception as e:
+                            self.log(f"     (削除エラー: {e})")
+                            
+                    sorted_list_tasks = sort_result.get("sorted", [])
+                    target_tasks.extend(sorted_list_tasks)
+                else:
+                    target_tasks.extend(list_target_tasks)
         
         if not target_tasks:
             self.log("スケジューリング対象の未登録タスクはありません。")
@@ -326,8 +360,8 @@ class Scheduler:
                 notes = task.get('notes', '')
                 task_id = task['id']
                 
-                is_scheduled_title = title.startswith(self.SCHEDULED_PREFIX)
-                is_split_title = title.startswith(self.SPLIT_PREFIX)
+                is_scheduled_title = self.SCHEDULED_PREFIX in title
+                is_split_title = self.SPLIT_PREFIX in title
                 has_event_id_note = "[Ref:EventID:" in notes
                 
                 if is_scheduled_title or is_split_title or has_event_id_note:
@@ -335,9 +369,9 @@ class Scheduler:
                     
                     # 1. タイトルの復元
                     if is_scheduled_title:
-                        title = title.replace(self.SCHEDULED_PREFIX, "", 1).strip()
+                        title = title.replace(self.SCHEDULED_PREFIX, "").strip()
                     if is_split_title:
-                        title = title.replace(self.SPLIT_PREFIX, "", 1).strip()
+                        title = title.replace(self.SPLIT_PREFIX, "").strip()
                     task['title'] = title
                         
                     # 2. メモの復元 (ID部分のみ正規表現で削除する)
