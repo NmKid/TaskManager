@@ -13,10 +13,13 @@ class GeminiAdapter:
     """
     def __init__(self):
         # APIキーは環境変数から取得するか、Config経由で取得する
-        api_key = os.environ.get("GEMINI_API_KEY")
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if not api_key:
-            # TODO: キーが存在しない場合のフォールバックやGUIへの警告表示ロジックを検討
-            print("WARNING: GEMINI_API_KEY environment variable not set.")
+            raise ValueError(
+                "Gemini APIキーが見つかりません。\n"
+                "プロジェクトフォルダ直下にある「.env.example」をコピーして「.env」ファイルを作成し、\n"
+                "GEMINI_API_KEY=あなたのAPIキー を設定してください。"
+            )
         
         # APIバージョンの指定 (v1beta -> v1)
         genai.configure(api_key=api_key, transport='rest', client_options={'api_endpoint': 'generativelanguage.googleapis.com'})

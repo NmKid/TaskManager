@@ -267,7 +267,7 @@ class Scheduler:
         try:
              # カレンダーAPIへ登録
              event = self.calendar.insert_event(
-                 summary=title, 
+                 summary=f"◆{title}", # 仕様変更：カレンダー側の予定タイトル先頭に◆を付与
                  description=notes, 
                  start_time=start_time, 
                  end_time=end_time

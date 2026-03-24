@@ -267,6 +267,11 @@ class TaskManagerApp:
                 if not self.scheduler:
                     self.initialize_logic()
                 self.scheduler.undo_scheduled_tasks()
+                # ユーザーから寄せられた要望に基づき、処理の最後にログ画面を明示的にリフレッシュする
+                try:
+                    page.update()
+                except:
+                    pass
                 
             page.add(
                 ft.Column([

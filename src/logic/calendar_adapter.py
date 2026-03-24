@@ -61,6 +61,7 @@ class CalendarAdapter:
         event = {
             'summary': summary,
             'description': description,
+            'colorId': '6',  # 予定の背景色を薄いオレンジ色（Tangerine）に設定
             'start': {
                 'dateTime': start_str,
                 'timeZone': 'Asia/Tokyo',
