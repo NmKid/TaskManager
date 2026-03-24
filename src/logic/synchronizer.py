@@ -15,12 +15,14 @@ class Synchronizer:
         tasks_adapter: TasksAdapter, 
         calendar_adapter: CalendarAdapter,
         state_manager: StateManager,
-        gemini_adapter: GeminiAdapter
+        gemini_adapter: GeminiAdapter,
+        logger=print
     ):
         self.tasks = tasks_adapter
         self.calendar = calendar_adapter
         self.state = state_manager
         self.gemini = gemini_adapter
+        self.logger = logger
 
     def _get_target_lists(self) -> dict:
         """
@@ -52,7 +54,7 @@ class Synchronizer:
         移動先が見つからない場合は Inbox に留める。
         （※仕様上、ユーザーが手動で公式アプリにて修正可能）
         """
-        print("タスクの振り分け処理を開始します...")
+        self.logger("タスクの振り分け処理を開始します...")
         
         # 1. 扱うべきリスト郡を取得
         lists = self._get_target_lists()
@@ -70,23 +72,25 @@ class Synchronizer:
         # 2. Inboxから未完了のタスクを取得
         tasks_in_inbox = self.tasks.get_tasks(inbox_id)
         if not tasks_in_inbox:
-            print("Inbox に振り分けるべきタスクはありません。")
+            self.logger("Inbox に振り分けるべきタスクはありません。")
             return
             
-        for idx, task in enumerate(tasks_in_inbox):
-            title = task.get('title', '')
-            notes = task.get('notes', '')
-            task_id = task['id']
+        self.logger(f"Inboxの {len(tasks_in_inbox)} 件のタスクを一括で分析中...")
+        
+        try:
+            # まとめてAIに判定させる
+            target_list_mapping = self._determine_target_lists_batch(tasks_in_inbox, active_lists)
             
-            print(f"[{idx+1}/{len(tasks_in_inbox)}] タスク '{title}' の振り分け先を分析中...")
-            
-            try:
-                # 3. Geminiにタスクの所属リストを判定させる
-                target_list_id = self._determine_target_list(title, notes, active_lists)
+            for task in tasks_in_inbox:
+                title = task.get('title', '')
+                notes = task.get('notes', '')
+                task_id = task['id']
+                
+                target_list_id = target_list_mapping.get(task_id)
                 
                 # 4. 判定結果に基づいて移動
                 if target_list_id:
-                    print(f"  -> リストを移動します (Target ID: {target_list_id})")
+                    self.logger(f"'{title}' -> リストを移動します")
                     # Tasks API v1 にはリスト間移動のメソッドが無いため、
                     # 先に新しいリストに同一内容で作成し、元リストから削除する擬似的な移動処理を行う
                     new_task = self.tasks.insert_task(
@@ -97,30 +101,37 @@ class Synchronizer:
                     
                     if new_task:
                          self.tasks.delete_task(tasklist_id=inbox_id, task_id=task_id)
-                         print(f"  -> 移動完了")
+                         self.logger(f"  -> 移動完了")
                 else:
-                    print("  -> 適切な移動先が見つからなかったため、Inboxに残します。")
+                    self.logger(f"'{title}' -> 適切な移動先が見つからなかったため、Inboxに残します。")
                     
-            except Exception as e:
-                print(f"  -> エラーが発生しました: {e}")
-                traceback.print_exc()
+        except Exception as e:
+            self.logger(f"一括分析・移動処理中にエラーが発生しました: {e}")
+            import traceback
+            traceback.print_exc()
 
-        print("振り分け処理が完了しました。")
+        self.logger("振り分け処理が完了しました。")
 
-    def _determine_target_list(self, title: str, notes: str, available_lists: list) -> str:
+    def _determine_target_lists_batch(self, tasks: list, available_lists: list) -> dict:
         """
-        Geminiを用いて、タスク内容と存在するリストの一覧から最適な移動先リストのIDを決定する。
+        Geminiを用いて、複数のタスクの一括振り分け先を判定し、タスクIDと移動先リストIDの辞書を返す。
         """
         # 利用可能なリストの名前とIDの辞書を作成
         list_mapping = {lst['title']: lst['id'] for lst in available_lists}
         list_names = list(list_mapping.keys())
         
+        tasks_text = ""
+        for task in tasks:
+            t_id = task['id']
+            title = task.get('title', '')
+            notes = task.get('notes', '')
+            tasks_text += f"タスクID: {t_id}\nタイトル: {title}\nメモ: {notes}\n---\n"
+        
         prompt = f'''
-以下のタスクを、提供されたタスクリストの選択肢から最も適切なものに分類（振り分け）してください。
+以下の複数のタスクについて、それぞれ提供されたタスクリストの選択肢から最も適切なものに分類（振り分け）してください。
 
-【タスク】
-タイトル: {title}
-メモ: {notes}
+【タスク一覧】
+{tasks_text}
 
 【選択肢となるタスクリスト】
 {", ".join(list_names)}
@@ -130,20 +141,36 @@ class Synchronizer:
 - 「買い物」「家事」「私用」など個人の用事は「■プライベート」系統のリストへ
 - どちらにも属さない、またはリストが存在しない場合は "None" としてください。
 
-上記の【選択肢となるタスクリスト】の名前の中から、このタスクに最も適したリストの名前を1つだけ出力してください。余計な文字列、理由や説明は一切出力しないでください。該当するものが全く無い場合は "None" と出力してください。
+出力形式は必ず以下の形式のJSONデータのみとしてください。Markdownのコードブロック(```json)は含めても構いません。
+{{
+  "task_id_1": "■仕事",
+  "task_id_2": "None",
+  ... (すべてのタスクIDについて出力)
+}}
 '''     
         try:
             # Geminiで分類実行 (リトライ付き)
             response = self.gemini.generate_content_with_retry(prompt)
-            result_name = response.text.strip()
+            text = response.text
+            import json
+            import re
             
-            # 結果が含まれているか柔軟に確認
-            for name, list_id in list_mapping.items():
-                if name in result_name:
-                    return list_id
+            # Markdownのコードブロックなどで囲まれている場合に対処
+            match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
+            if match:
+                text = match.group(1)
+                
+            result_json = json.loads(text)
+            
+            # リスト名をIDに変換して辞書を作成
+            task_target_mapping = {}
+            for t_id, list_name in result_json.items():
+                list_id = list_mapping.get(list_name)
+                if list_id:
+                    task_target_mapping[t_id] = list_id
                     
-            return None
+            return task_target_mapping
             
         except Exception as e:
-            print(f"分類推論エラー: {e}")
-            return None
+            self.logger(f"一括分類推論エラー: {e}")
+            return {}
