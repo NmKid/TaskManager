@@ -151,9 +151,9 @@ class Scheduler:
                 val = int(num_str)
                 explicit_duration = val * 60 if unit_str == 'h' else val
                 
-                # タイトルから時間指定部分を削除し、本体も更新しておく
-                title = title[:match.start()].strip()
-                task['title'] = title
+                # 要望によりタイトル内の時間指定部分（:30mなど）は削除せずそのまま残す
+                # title = title[:match.start()].strip()
+                # task['title'] = title
             
             self.log(f"---\nタスク '{title}' を処理中...")
             if explicit_duration:
@@ -327,15 +327,18 @@ class Scheduler:
                 task_id = task['id']
                 
                 is_scheduled_title = title.startswith(self.SCHEDULED_PREFIX)
+                is_split_title = title.startswith(self.SPLIT_PREFIX)
                 has_event_id_note = "[Ref:EventID:" in notes
                 
-                if is_scheduled_title or has_event_id_note:
+                if is_scheduled_title or is_split_title or has_event_id_note:
                     self.log(f"  -> 対象タスク発見: {title}")
                     
                     # 1. タイトルの復元
                     if is_scheduled_title:
                         title = title.replace(self.SCHEDULED_PREFIX, "", 1).strip()
-                        task['title'] = title
+                    if is_split_title:
+                        title = title.replace(self.SPLIT_PREFIX, "", 1).strip()
+                    task['title'] = title
                         
                     # 2. メモの復元 (ID部分のみ正規表現で削除する)
                     if has_event_id_note:

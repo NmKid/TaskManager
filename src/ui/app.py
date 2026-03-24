@@ -72,12 +72,11 @@ class TaskManagerApp:
                 log_view.controls.append(ft.Text(str(message).strip(), selectable=True, font_family="Consolas", color=color))
                 try:
                     log_view.update()
-                except:
-                    pass
-                try:
                     page.update()
-                except:
-                    pass
+                    # 画面表示(リフレッシュ)を確実に毎度反映させるため短いスリープを挟む
+                    time.sleep(0.05)
+                except Exception as e:
+                    print(f"UI update failed: {e}")
             
             self.log_callback = ui_log
 
