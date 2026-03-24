@@ -117,10 +117,32 @@ class Scheduler:
             notes = task.get('notes', '')
             task_id = task['id']
             
+            # 明示的な時間指定のパース (末尾の [:：][数値][HhMmＨｈＭｍ])
+            import re
+            match = re.search(r'[:：]\s*([0-9０-９]+)\s*([HhMmＨｈＭｍ])\s*$', title)
+            explicit_duration = None
+            if match:
+                num_str = match.group(1).translate(str.maketrans('０１２３４５６７８９', '0123456789'))
+                unit_str = match.group(2).lower().translate(str.maketrans('ｈｍ', 'hm'))
+                val = int(num_str)
+                explicit_duration = val * 60 if unit_str == 'h' else val
+                
+                # タイトルから時間指定部分を削除し、本体も更新しておく
+                title = title[:match.start()].strip()
+                task['title'] = title
+            
             self.log(f"---\nタスク '{title}' を処理中...")
+            if explicit_duration:
+                self.log(f"  -> 明示的な所要時間の指定を検出しました: {explicit_duration}分")
             
             # Geminiによる詳細分析
             analysis = self.gemini.analyze_task(title, notes)
+            
+            # 明示的な時間指定があれば優先して適用し、AIによる勝手なタスク分割を抑制する
+            if explicit_duration is not None:
+                analysis["duration_minutes"] = explicit_duration
+                analysis["recommended_subtasks"] = []
+                
             subtasks = analysis.get("recommended_subtasks", [])
             
             # タスク分割の判定
